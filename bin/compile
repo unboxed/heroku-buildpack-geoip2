@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+# grab environment args
+BUILD_DIR=$1
+CACHE_DIR=$2
+ENV_FILE=$3
+
+# Paths.
+BIN_DIR=$(cd $(dirname $0); pwd) # absolute path
+ROOT_DIR=$(dirname $BIN_DIR)
+
+# Syntax sugar.
+source $BIN_DIR/utils
+
+GEOIP_VERSION="1.2.0"
+
+# Maxmind GeoIP C library
+GEOIP_DIST_URL="https://github.com/maxmind/libmaxminddb/releases/download/$GEOIP_VERSION/libmaxminddb-$GEOIP_VERSION.tar.gz"
+GEOIP_DIST_DIR="libmaxminddb-$GEOIP_VERSION"
+
+GEOIP_DATA_DIR="$BUILD_DIR/geoip_data"
+
+GEOLITECOUNTRY_URL="http://geolite.maxmind.com/download/geoip/database/GeoLite2-Country.mmdb.gz"
+GEOLITECOUNTRY_FILE="GeoLite2-Country.mmdb"
+
+VENDORED_GEOIP=".geoip/$GEOIP_VERSION"
+
+
+if [ ! -d "$CACHE_DIR/$VENDORED_GEOIP" ]; then
+    puts-step "Clearing cache and retrieving Maxmind GeoIP C Library"
+    rm -rf $CACHE_DIR/.geoip
+    mkdir -p $CACHE_DIR/$VENDORED_GEOIP
+    curl -s -L -o geoip.tar.gz $GEOIP_DIST_URL
+    tar -zxvf geoip.tar.gz > /dev/null
+    cd $GEOIP_DIST_DIR
+    puts-step "Configuring and compiling Maxmind GeoIP C Library"
+    ./configure --prefix=$CACHE_DIR/$VENDORED_GEOIP > /dev/null
+    make > /dev/null
+    make check > /dev/null
+    puts-step "Installing Maxmind GeoIP C Library to cache directory"
+    make install > /dev/null
+else
+    puts-step "Using cached Maxmind GeoIP C library $GEOIP_VERSION"
+fi
+
+puts-step "Copying cached GeoIP C Library to build directory"
+TARGET_VENDOR_DIR=".heroku/vendor"
+mkdir -p $BUILD_DIR/$TARGET_VENDOR_DIR
+cp -R $CACHE_DIR/$VENDORED_GEOIP/* $BUILD_DIR/$TARGET_VENDOR_DIR &> /dev/null || true
+
+APP_VENDOR="/app/$TARGET_VENDOR_DIR"
+
+puts-step "Setting default environment variables"
+set-default-env LIBRARY_PATH "$APP_VENDOR/lib"
+set-default-env LD_LIBRARY_PATH "$APP_VENDOR/lib"
+set-default-env CPATH "$APP_VENDOR/include"
+
+if [ ! -d "$GEOIP_DATA_DIR" ]; then
+    mkdir -p $GEOIP_DATA_DIR
+fi
+
+cd $GEOIP_DATA_DIR
+
+if [ ! -f $GEOLITECOUNTRY_FILE ]; then
+    puts-step "Adding GeoIP2 country database"
+    curl -s -L -o ${GEOLITECOUNTRY_FILE}.gz $GEOLITECOUNTRY_URL
+    gunzip ${GEOLITECOUNTRY_FILE}.gz > /dev/null
+fi
