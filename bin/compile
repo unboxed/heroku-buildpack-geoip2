@@ -3,7 +3,7 @@
 # grab environment args
 BUILD_DIR=$1
 CACHE_DIR=$2
-ENV_FILE=$3
+ENV_DIR=$3
 
 # Paths.
 BIN_DIR=$(cd $(dirname $0); pwd) # absolute path
@@ -17,14 +17,9 @@ GEOIP_VERSION="1.2.0"
 # Maxmind GeoIP C library
 GEOIP_DIST_URL="https://github.com/maxmind/libmaxminddb/releases/download/$GEOIP_VERSION/libmaxminddb-$GEOIP_VERSION.tar.gz"
 GEOIP_DIST_DIR="libmaxminddb-$GEOIP_VERSION"
-
 GEOIP_DATA_DIR="$BUILD_DIR/geoip_data"
-
-GEOLITECOUNTRY_URL="http://geolite.maxmind.com/download/geoip/database/GeoLite2-Country.mmdb.gz"
-GEOLITECOUNTRY_FILE="GeoLite2-Country.mmdb"
-
 VENDORED_GEOIP=".geoip/$GEOIP_VERSION"
-
+GEOIP_LICENCE_KEY=$(cat $ENV_DIR/GEOIP_LICENCE_KEY)
 
 if [ ! -d "$CACHE_DIR/$VENDORED_GEOIP" ]; then
     puts-step "Clearing cache and retrieving Maxmind GeoIP C Library"
@@ -59,10 +54,11 @@ if [ ! -d "$GEOIP_DATA_DIR" ]; then
     mkdir -p $GEOIP_DATA_DIR
 fi
 
-cd $GEOIP_DATA_DIR
-
-if [ ! -f $GEOLITECOUNTRY_FILE ]; then
-    puts-step "Adding GeoIP2 country database"
-    curl -s -L -o ${GEOLITECOUNTRY_FILE}.gz $GEOLITECOUNTRY_URL
-    gunzip ${GEOLITECOUNTRY_FILE}.gz > /dev/null
-fi
+for GEOLITE_ID in "GeoLite2-Country" "GeoLite2-City"
+do
+    if [ ! -f $GEOLITE_ID ]; then
+        puts-step "Adding $GEOLITE_ID database"
+        wget -qO- "https://download.maxmind.com/app/geoip_download?edition_id=$GEOLITE_ID&license_key=$GEOIP_LICENCE_KEY&suffix=tar.gz" \
+        | tar -xzf - -C $GEOIP_DATA_DIR --strip-components=1
+    fi
+done
